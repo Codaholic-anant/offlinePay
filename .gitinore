@@ -1,0 +1,12 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/db.sqlite3
+
+# React Native
+mobile/OfflinePayApp/node_modules/
+
+# System
+.DS_Store
+Thumbs.db
