@@ -26,6 +26,48 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+
+// Auto refresh token when it expires
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const original = error.config;
+
+    // If 401 and not already retrying
+    if (error.response?.status === 401 && !original._retry) {
+      original._retry = true;
+
+      try {
+        const refresh = await AsyncStorage.getItem('refresh_token');
+
+        if (refresh) {
+          // Get new access token
+          const res = await axios.post(
+            `${BASE_URL}/token/refresh/`,
+            { refresh },
+            {
+              headers: {
+                'ngrok-skip-browser-warning': 'true'
+              }
+            }
+          );
+
+          // Save new token
+          await AsyncStorage.setItem('access_token', res.data.access);
+
+          // Retry original request with new token
+          original.headers.Authorization = `Bearer ${res.data.access}`;
+          return api(original);
+        }
+      } catch {
+        // Refresh failed — logout
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'username']);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 // ─────────────────────────────
 // AUTH
 // ─────────────────────────────

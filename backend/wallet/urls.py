@@ -38,4 +38,11 @@ urlpatterns = [
 
     # POST /api/wallet/cashout/ → send money back to bank
     path('wallet/cashout/', views.cashout, name='cashout'),
+
+    path('wallet/register-receiver/', views.register_receiver, name='register_receiver'),
+    path('wallet/get-receiver/', views.get_receiver, name='get_receiver'),
+    path('wallet/send-relay/', views.send_payment_relay, name='send_relay'),
+    path('wallet/check-relay/', views.check_payment_relay, name='check_relay'),
+    path('wallet/confirm-relay/', views.confirm_payment_relay, name='confirm_relay'),
+    path('wallet/check-confirm/', views.check_confirmation_relay, name='check_confirm'),
 ]

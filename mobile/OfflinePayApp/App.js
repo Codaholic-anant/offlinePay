@@ -3,12 +3,20 @@ import { View, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import LoginScreen from './src/screens/LoginScreen';
 import WalletScreen from './src/screens/WalletScreen';
+import PinScreen from './src/screens/PinScreen';
+
+const PIN_KEY = 'wallet_pin';
 
 export default function App() {
-  const [username, setUsername] = useState(null);
-  const [checking, setChecking] = useState(true);
+  const [appState, setAppState] = useState('loading');
+  // loading → checking session
+  // login   → show login screen
+  // pin_setup → first time, create PIN
+  // pin_verify → returning user, verify PIN
+  // wallet  → show wallet
 
-  // When app opens — check if already logged in
+  const [username, setUsername] = useState(null);
+
   useEffect(() => {
     checkSession();
   }, []);
@@ -17,43 +25,89 @@ export default function App() {
     try {
       const token = await AsyncStorage.getItem('access_token');
       const savedUsername = await AsyncStorage.getItem('username');
+      const savedPin = await AsyncStorage.getItem(PIN_KEY);
+
       if (token && savedUsername) {
         setUsername(savedUsername);
+        if (savedPin) {
+          // Has PIN — verify it
+          setAppState('pin_verify');
+        } else {
+          // No PIN yet — set one up
+          setAppState('pin_setup');
+        }
+      } else {
+        // Not logged in
+        setAppState('login');
       }
     } catch (error) {
-      console.log('Session check error:', error);
-    } finally {
-      setChecking(false);
+      setAppState('login');
     }
   };
 
-  // Show spinner while checking session
-  if (checking) {
+  const handleLoginSuccess = async (name) => {
+    setUsername(name);
+    const savedPin = await AsyncStorage.getItem(PIN_KEY);
+    if (savedPin) {
+      setAppState('pin_verify');
+    } else {
+      setAppState('pin_setup');
+    }
+  };
+
+  const handleLogout = async () => {
+    setUsername(null);
+    setAppState('login');
+  };
+
+  // Loading spinner
+  if (appState === 'loading') {
     return (
       <View style={{
         flex: 1,
         backgroundColor: '#0f0f23',
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
       }}>
         <ActivityIndicator size="large" color="#6366f1" />
       </View>
     );
   }
 
-  // Show wallet if logged in, login screen if not
-  if (username) {
+  // Login screen
+  if (appState === 'login') {
     return (
-      <WalletScreen
-        username={username}
-        onLogout={() => setUsername(null)}
+      <LoginScreen
+        onLoginSuccess={handleLoginSuccess}
       />
     );
   }
 
+  // PIN setup — first time
+  if (appState === 'pin_setup') {
+    return (
+      <PinScreen
+        mode="setup"
+        onSuccess={() => setAppState('wallet')}
+      />
+    );
+  }
+
+  // PIN verify — every open
+  if (appState === 'pin_verify') {
+    return (
+      <PinScreen
+        mode="verify"
+        onSuccess={() => setAppState('wallet')}
+      />
+    );
+  }
+
+  // Main wallet
   return (
-    <LoginScreen
-      onLoginSuccess={(name) => setUsername(name)}
+    <WalletScreen
+      username={username}
+      onLogout={handleLogout}
     />
   );
 }

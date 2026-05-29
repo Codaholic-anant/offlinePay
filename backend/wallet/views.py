@@ -388,3 +388,162 @@ def cashout(request):
         'new_balance': '0.00',
         'note': 'In production this triggers a real bank transfer',
     })
+
+# ─────────────────────────────────────────────────────
+# REGISTER RECEIVER
+# POST /api/wallet/register-receiver/
+# Phone B calls this to say "I am ready to receive"
+# Stores IP temporarily so Phone A can find it
+# ─────────────────────────────────────────────────────
+
+# Simple in-memory store for receiver IPs
+# In production use Redis or database
+active_receivers = {}
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def register_receiver(request):
+    ip_address = request.data.get('ip_address')
+    username = request.user.username
+
+    if not ip_address:
+        return Response(
+            {'error': 'IP address required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Store receiver info
+    active_receivers[username] = {
+        'ip': ip_address,
+        'registered_at': timezone.now().isoformat(),
+    }
+
+    return Response({
+        'message': f'{username} registered as receiver',
+        'ip': ip_address,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_receiver(request):
+    username = request.query_params.get('username')
+
+    if not username:
+        return Response(
+            {'error': 'Username required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    receiver = active_receivers.get(username)
+
+    if not receiver:
+        return Response(
+            {'error': 'Receiver not found or not ready'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    return Response({
+        'username': username,
+        'ip': receiver['ip'],
+        'registered_at': receiver['registered_at'],
+    })
+
+# Simple in-memory payment relay
+# Holds payment for 60 seconds while receiver picks it up
+pending_payments = {}
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_payment_relay(request):
+    """
+    Payer posts payment here.
+    Receiver polls here to pick it up.
+    Payment deleted after pickup.
+    Django never processes the money —
+    just holds the package temporarily.
+    """
+    receiver_username = request.data.get('receiver')
+    payment_data = request.data.get('payment')
+
+    if not receiver_username or not payment_data:
+        return Response(
+            {'error': 'receiver and payment required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Store payment for receiver to pick up
+    pending_payments[receiver_username] = {
+        'payment': payment_data,
+        'sent_at': timezone.now().isoformat(),
+        'sender': request.user.username,
+    }
+
+    return Response({
+        'success': True,
+        'message': 'Payment sent to relay. Waiting for receiver.',
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_payment_relay(request):
+    """
+    Receiver polls this every 2 seconds.
+    When payment arrives — picks it up and deletes it.
+    """
+    username = request.user.username
+    payment = pending_payments.get(username)
+
+    if not payment:
+        return Response({'payment': None})
+
+    # Delete after pickup — one time use
+    del pending_payments[username]
+
+    return Response({
+        'payment': payment['payment'],
+        'sender': payment['sender'],
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def confirm_payment_relay(request):
+    """
+    Receiver confirms they got the payment.
+    Sender gets this confirmation.
+    """
+    txn_id = request.data.get('txn_id')
+    receiver = request.user.username
+
+    # Store confirmation for sender
+    pending_payments[f'confirm_{txn_id}'] = {
+        'confirmed': True,
+        'receiver': receiver,
+        'confirmed_at': timezone.now().isoformat(),
+    }
+
+    return Response({'success': True})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def check_confirmation_relay(request):
+    """
+    Sender polls this to know if receiver confirmed.
+    """
+    txn_id = request.query_params.get('txn_id')
+    key = f'confirm_{txn_id}'
+    confirmation = pending_payments.get(key)
+
+    if not confirmation:
+        return Response({'confirmed': False})
+
+    # Delete after pickup
+    del pending_payments[key]
+
+    return Response({
+        'confirmed': True,
+        'receiver': confirmation['receiver'],
+    })

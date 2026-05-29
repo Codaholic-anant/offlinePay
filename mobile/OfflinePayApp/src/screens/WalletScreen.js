@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import PayScreen from './PayScreen';
+import ReceiveScreen from './ReceiveScreen';
+import { cashout } from '../api';
 import {
   View,
   Text,
@@ -33,6 +36,8 @@ export default function WalletScreen({ username, onLogout }) {
   const [loadAmount, setLoadAmount] = useState('');
   const [loadingMoney, setLoadingMoney] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [showReceive, setShowReceive] = useState(false);
 
   useEffect(() => {
     loadWalletData();
@@ -150,6 +155,42 @@ export default function WalletScreen({ username, onLogout }) {
     );
   };
 
+  const handleCashout = () => {
+  if (balance <= 0) {
+    Alert.alert('No Balance', 'Nothing to cash out.');
+    return;
+  }
+
+  Alert.alert(
+    '🏦 Cash Out',
+    `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will reset your wallet.`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Cash Out',
+        onPress: async () => {
+          try {
+            const result = await cashout(balance);
+            await saveBalance(0);
+            await clearWalletData();
+            setBalance(0);
+            setTransactions([]);
+            Alert.alert(
+              '✅ Cashed Out!',
+              `₹${balance.toFixed(2)} sent to your bank.\nWallet reset to ₹0.`
+            );
+          } catch (error) {
+            Alert.alert(
+              'Failed',
+              error.response?.data?.error || 'Cashout failed. Check internet.'
+            );
+          }
+        },
+      },
+    ]
+  );
+};
+
   const pendingCount = transactions.filter(
     t => t.status === 'pending'
   ).length;
@@ -163,7 +204,33 @@ export default function WalletScreen({ username, onLogout }) {
     );
   }
 
+  if (showPay) {
+    return (
+      <PayScreen
+        onBack={() => setShowPay(false)}
+        onPaymentSent={(newBalance) => {
+          setBalance(newBalance);
+          setShowPay(false);
+        }}
+      />
+    );
+  }
+
+    if (showReceive) {
+    return (
+      <ReceiveScreen
+        onBack={() => setShowReceive(false)}
+        onPaymentReceived={(newBalance) => {
+          setBalance(newBalance);
+          setShowReceive(false);
+        }}
+      />
+    );
+  }
+
+
   return (
+      
     <View style={styles.container}>
       <ScrollView
         refreshControl={
@@ -258,12 +325,7 @@ export default function WalletScreen({ username, onLogout }) {
           {/* Pay */}
           <TouchableOpacity
             style={[styles.actionCard, styles.actionCardGreen]}
-            onPress={() =>
-              Alert.alert(
-                '📲 Bluetooth Pay',
-                'Coming in next phase! We are building this now.'
-              )
-            }
+            onPress={() => setShowPay(true)}
           >
             <Text style={styles.actionIcon}>📲</Text>
             <Text style={styles.actionTitle}>Pay</Text>
@@ -274,12 +336,7 @@ export default function WalletScreen({ username, onLogout }) {
         {/* Receive button */}
         <TouchableOpacity
           style={styles.receiveCard}
-          onPress={() =>
-            Alert.alert(
-              '📥 Receive Payment',
-              'Coming in next phase! We are building this now.'
-            )
-          }
+          onPress={() => setShowReceive(true)}
         >
           <Text style={styles.receiveText}>
             📥  Receive Payment via Bluetooth
@@ -300,6 +357,18 @@ export default function WalletScreen({ username, onLogout }) {
                 🔄  Sync Transactions to Server
               </Text>
             )}
+          </TouchableOpacity>
+        )}
+
+        {/* Cashout button */}
+        {isOnline && balance > 0 && (
+          <TouchableOpacity
+            style={styles.cashoutBtn}
+            onPress={handleCashout}
+          >
+            <Text style={styles.cashoutBtnText}>
+              🏦  Cash Out to Bank
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -699,5 +768,19 @@ const styles = StyleSheet.create({
   modalCancelText: {
     color: '#888',
     fontSize: 15,
+  },
+  cashoutBtn: {
+    marginHorizontal: 24,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    marginBottom: 24,
+  },
+  cashoutBtnText: {
+    color: '#ef4444',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
