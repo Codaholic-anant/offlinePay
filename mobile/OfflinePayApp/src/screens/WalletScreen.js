@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import PayScreen from './PayScreen';
 import ReceiveScreen from './ReceiveScreen';
+import BluetoothPayScreen from './BluetoothPayScreen';
+import BluetoothReceiveScreen from './BluetoothReceiveScreen';
+// import { AppState } from 'react-native';
 import { cashout } from '../api';
 import {
   View,
@@ -13,6 +16,7 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getWallet, loadMoney, logoutUser, syncTransactions } from '../api';
@@ -28,6 +32,8 @@ import {
 
 export default function WalletScreen({ username, onLogout }) {
   const [balance, setBalance] = useState(0);
+  const [showBTPay, setShowBTPay] = useState(false);
+  const [showBTReceive, setShowBTReceive] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -41,13 +47,43 @@ export default function WalletScreen({ username, onLogout }) {
 
   useEffect(() => {
     loadWalletData();
+
+    // Check online status every 5 seconds
+    const interval = setInterval(() => {
+      checkOnlineStatus();
+    }, 5000);
+
+    // Also check when app comes back to foreground
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      (nextAppState) => {
+        if (nextAppState === 'active') {
+          checkOnlineStatus();
+        }
+      }
+    );
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
   }, []);
 
+  const checkOnlineStatus = async () => {
+    try {
+      await getWallet();
+      setIsOnline(true);
+    } catch {
+      setIsOnline(false);
+    }
+  };
+
   const loadWalletData = async () => {
-    // Load local data first — always works offline
+    // Load local balance first
     const localBalance = await getBalance();
     setBalance(localBalance);
 
+    // Load local transactions ← make sure this line exists
     const localTxns = await getTransactions();
     setTransactions(localTxns);
 
@@ -156,40 +192,54 @@ export default function WalletScreen({ username, onLogout }) {
   };
 
   const handleCashout = () => {
-  if (balance <= 0) {
-    Alert.alert('No Balance', 'Nothing to cash out.');
-    return;
-  }
+    if (balance <= 0) {
+      Alert.alert('No Balance', 'Nothing to cash out.');
+      return;
+    }
 
-  Alert.alert(
-    '🏦 Cash Out',
-    `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will reset your wallet.`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Cash Out',
-        onPress: async () => {
-          try {
-            const result = await cashout(balance);
-            await saveBalance(0);
-            await clearWalletData();
-            setBalance(0);
-            setTransactions([]);
-            Alert.alert(
-              '✅ Cashed Out!',
-              `₹${balance.toFixed(2)} sent to your bank.\nWallet reset to ₹0.`
-            );
-          } catch (error) {
-            Alert.alert(
-              'Failed',
-              error.response?.data?.error || 'Cashout failed. Check internet.'
-            );
-          }
+    Alert.alert(
+      '🏦 Cash Out',
+      `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will:\n1. Sync all transactions\n2. Reset your wallet to ₹0`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Cash Out',
+          onPress: async () => {
+            try {
+              // Step 1 — Sync transactions first
+              const pendingTxns = transactions.filter(
+                t => t.status === 'pending'
+              );
+
+              if (pendingTxns.length > 0) {
+                console.log('Syncing', pendingTxns.length, 'transactions before cashout');
+                const syncResult = await syncTransactions(pendingTxns);
+                console.log('Sync result:', syncResult);
+                await clearTransactions();
+              }
+
+              // Step 2 — Then cashout
+              const result = await cashout(balance);
+              await saveBalance(0);
+              await clearWalletData();
+              setBalance(0);
+              setTransactions([]);
+
+              Alert.alert(
+                '✅ Cashed Out!',
+                `₹${balance.toFixed(2)} sent to your bank.\nWallet reset to ₹0.\nAll transactions synced.`
+              );
+            } catch (error) {
+              Alert.alert(
+                'Failed',
+                error.response?.data?.error || 'Cashout failed. Check internet.'
+              );
+            }
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const pendingCount = transactions.filter(
     t => t.status === 'pending'
@@ -216,7 +266,7 @@ export default function WalletScreen({ username, onLogout }) {
     );
   }
 
-    if (showReceive) {
+  if (showReceive) {
     return (
       <ReceiveScreen
         onBack={() => setShowReceive(false)}
@@ -228,9 +278,36 @@ export default function WalletScreen({ username, onLogout }) {
     );
   }
 
+  if (showBTPay) {
+    return (
+      <BluetoothPayScreen
+        onBack={() => setShowBTPay(false)}
+        onPaymentSent={(newBalance) => {
+          setBalance(newBalance);
+          setShowBTPay(false);
+          // Refresh transaction history
+          loadWalletData();
+        }}
+      />
+    );
+  }
+  if (showBTReceive) {
+    return (
+      <BluetoothReceiveScreen
+        onBack={() => setShowBTReceive(false)}
+        onPaymentReceived={(newBalance) => {
+          setBalance(newBalance);
+          setShowBTReceive(false);
+          // Refresh transaction history
+          loadWalletData();
+        }}
+      />
+    );
+  }
+
 
   return (
-      
+
     <View style={styles.container}>
       <ScrollView
         refreshControl={
@@ -325,7 +402,7 @@ export default function WalletScreen({ username, onLogout }) {
           {/* Pay */}
           <TouchableOpacity
             style={[styles.actionCard, styles.actionCardGreen]}
-            onPress={() => setShowPay(true)}
+            onPress={() => setShowBTPay(true)}
           >
             <Text style={styles.actionIcon}>📲</Text>
             <Text style={styles.actionTitle}>Pay</Text>
@@ -340,6 +417,16 @@ export default function WalletScreen({ username, onLogout }) {
         >
           <Text style={styles.receiveText}>
             📥  Receive Payment via Bluetooth
+          </Text>
+        </TouchableOpacity>
+
+        {/* Bluetooth Receive button */}
+        <TouchableOpacity
+          style={styles.btReceiveCard}
+          onPress={() => setShowBTReceive(true)}
+        >
+          <Text style={styles.btReceiveText}>
+            🔵  Receive via Bluetooth
           </Text>
         </TouchableOpacity>
 
@@ -534,6 +621,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     marginBottom: 20,
+  },
+  btReceiveCard: {
+    backgroundColor: '#1e1b4b',
+    marginHorizontal: 24,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#6366f1',
+    marginBottom: 12,
+  },
+  btReceiveText: {
+    color: '#818cf8',
+    fontSize: 15,
+    fontWeight: '600',
   },
   statusText: {
     color: 'white',

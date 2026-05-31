@@ -341,14 +341,6 @@ def sync_transactions(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def cashout(request):
-    """
-    User wants money back in bank account.
-    They tell us their current local balance.
-    We verify it makes sense, then reset wallet.
-
-    In real app → trigger actual bank transfer here.
-    For learning → we just reset the balance.
-    """
     local_balance = request.data.get('local_balance', 0)
 
     try:
@@ -361,18 +353,19 @@ def cashout(request):
 
     wallet = request.user.wallet
 
-    # Safety check
-    # They cannot cash out MORE than what was issued
-    # If they try → something fishy is happening
-    if local_balance > float(wallet.issued_balance):
+    # Remove the strict check
+    # User might have received payments via Bluetooth
+    # that pushed balance above issued amount
+    # That's totally valid!
+    if local_balance < 0:
         return Response(
-            {'error': 'Cannot cash out more than issued balance'},
+            {'error': 'Balance cannot be negative'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     cashed_out = local_balance
 
-    # Reset wallet completely
+    # Reset wallet
     wallet.issued_balance = 0
     wallet.is_offline = False
     wallet.device_id = ''
@@ -380,7 +373,6 @@ def cashout(request):
     wallet.save()
 
     # Deactivate all certificates
-    # Old pytihcertificates are now worthless
     wallet.certificates.update(is_active=False)
 
     return Response({
