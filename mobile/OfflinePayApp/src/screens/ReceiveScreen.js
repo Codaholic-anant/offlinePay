@@ -14,7 +14,7 @@ import { processIncomingPayment } from '../utils/payment';
 import { getBalance } from '../storage';
 
 // Update this if ngrok restarts
-const BASE_URL = 'https://offlinepay-6k39.onrender.com';
+const BASE_URL = 'https://offlinepay-6k39.onrender.com/api';
 
 export default function ReceiveScreen({ onBack, onPaymentReceived }) {
   const [myIP, setMyIP] = useState('');

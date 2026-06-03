@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // YOUR ngrok URL — this is how phone talks to Django
 // Update this every time you restart ngrok
-const BASE_URL = 'https://offlinepay-6k39.onrender.com';
+const BASE_URL = 'https://offlinepay-6k39.onrender.com/api';
 
 // Create axios instance
 // Like a pre-configured phone that knows the server address
