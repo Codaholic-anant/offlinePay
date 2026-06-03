@@ -8,7 +8,7 @@ from datetime import timedelta
 from decimal import Decimal
 import json
 
-from .models import Wallet, Transaction, WalletCertificate, BankAccount, BankTransaction
+from ..models import Wallet, Transaction, WalletCertificate, BankAccount, BankTransaction
 from .crypto_setup import sign_data, PUBLIC_KEY_PEM
 
 
