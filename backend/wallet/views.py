@@ -8,10 +8,10 @@ from datetime import timedelta
 # Create bank account with ₹10,000 demo balance
 from .models import BankAccount
 # BankAccount.objects.create(user=user)
+import os
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.backends import default_backend
-from decimal import Decimal
 import json
 import base64
 
@@ -30,17 +30,44 @@ from .models import Wallet, Transaction, WalletCertificate
 # Only you have the stamp (private key)
 # Anyone can check if stamp is real (public key)
 # ─────────────────────────────────────────────────────
-private_key = rsa.generate_private_key(
-    public_exponent=65537,
-    key_size=2048,
-    backend=default_backend()
-)
-public_key = private_key.public_key()
 
-PUBLIC_KEY_PEM = public_key.public_bytes(
-    encoding=serialization.Encoding.PEM,
-    format=serialization.PublicFormat.SubjectPublicKeyInfo
-).decode('utf-8')
+PRIVATE_KEY_PEM = os.environ.get('PRIVATE_KEY_PEM', '')
+PUBLIC_KEY_PEM_ENV = os.environ.get('PUBLIC_KEY_PEM', '')
+
+if PRIVATE_KEY_PEM and PUBLIC_KEY_PEM_ENV:
+    # Load from environment (production)
+    private_key = serialization.load_pem_private_key(
+        PRIVATE_KEY_PEM.encode('utf-8').replace(b'\\n', b'\n'),
+        password=None,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
+    PUBLIC_KEY_PEM = PUBLIC_KEY_PEM_ENV
+    print("Using RSA keys from environment ✅")
+else:
+    # Generate fresh (development only)
+    print("WARNING: Generating new RSA keys — development mode")
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend()
+    )
+    public_key = private_key.public_key()
+    PUBLIC_KEY_PEM = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode('utf-8')
+
+    # Print keys so you can copy to Railway env vars
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    ).decode('utf-8')
+    print("PRIVATE KEY (save to Render):")
+    print(private_pem)
+    print("PUBLIC KEY (save to Render):")
+    print(PUBLIC_KEY_PEM)
 
 
 def sign_data(data: dict) -> str:

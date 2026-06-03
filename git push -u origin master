@@ -1,0 +1,41 @@
+[33mcommit afc47f24176e8b79353054e14d96970555285aef[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Wed Jun 3 08:33:55 2026 +0530
+
+    Remove staticfiles from repository
+
+[33mcommit 6ddcf2da35739f9091fae450fdde95bfd0bb8cc6[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Wed Jun 3 08:25:36 2026 +0530
+
+    Production ready for Render deployment
+
+[33mcommit 7d9490eb221cfc8c2263a3daea0fedbc7dd37fbc[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Sun May 31 21:47:51 2026 +0530
+
+    Phase 6 complete - Bluetooth Classic pyament working
+
+[33mcommit c2de7e91814d4350f378932da06058e364c42c63[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Fri May 29 15:41:16 2026 +0530
+
+    pin phase complete
+
+[33mcommit a35ae5a6ba7db70f951543bc46a25882866fda52[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Thu May 28 01:00:37 2026 +0530
+
+    Add gitignore
+
+[33mcommit 835f7e0348ffb945cbde8a8e7a156777b1b8868f[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Thu May 28 00:59:50 2026 +0530
+
+    Add gitinore
+
+[33mcommit 92ebc909ef643fa43e5070770567472960f9887e[m
+Author: Anant Deep <ind.anantdeep@gmail.com>
+Date:   Thu May 28 00:53:55 2026 +0530
+
+    Phase 3 complete - login, wallet, load money working
