@@ -80,11 +80,10 @@ export default function WalletScreen({ username, onLogout }) {
   };
 
   const loadWalletData = async () => {
-    // Load local balance first
+    // Load local balance first (instant)
     const localBalance = await getBalance();
     setBalance(localBalance);
 
-    // Load local transactions ← make sure this line exists
     const localTxns = await getTransactions();
     setTransactions(localTxns);
 
@@ -93,6 +92,16 @@ export default function WalletScreen({ username, onLogout }) {
       const walletData = await getWallet();
       setIsOnline(true);
       await savePublicKey(walletData.public_key);
+
+      // ✅ NEW — restore balance from server if local is 0
+      const serverBalance = parseFloat(walletData.issued_balance);
+      const localBal = await getBalance();
+
+      if (localBal === 0 && serverBalance > 0) {
+        await saveBalance(serverBalance);
+        setBalance(serverBalance);
+      }
+
     } catch {
       setIsOnline(false);
     } finally {
