@@ -12,7 +12,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
     // ngrok needs this header otherwise it shows warning page
-    'ngrok-skip-browser-warning': 'true',
+    
   },
 });
 
@@ -46,9 +46,7 @@ api.interceptors.response.use(
             `${BASE_URL}/token/refresh/`,
             { refresh },
             {
-              headers: {
-                'ngrok-skip-browser-warning': 'true'
-              }
+           
             }
           );
 

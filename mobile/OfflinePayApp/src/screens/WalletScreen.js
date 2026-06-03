@@ -129,8 +129,8 @@ export default function WalletScreen({ username, onLogout }) {
       });
 
       const { order_id, key_id, mock } = orderRes.data;
-
-      if (mock) {
+      const forceMock = true; // remove this for production
+      if (mock || forceMock) {
         // Mock mode — skip Razorpay checkout
         const verifyRes = await api.post('/payment/verify/', {
           razorpay_payment_id: 'mock_pay_' + Date.now(),

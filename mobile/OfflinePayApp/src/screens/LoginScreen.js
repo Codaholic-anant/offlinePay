@@ -49,9 +49,9 @@ export default function LoginScreen({ onLoginSuccess }) {
       }
     } catch (error) {
       const message =
-        error.response?.data?.error ||
-        error.response?.data?.detail ||
-        'Something went wrong. Check your connection.';
+  	console.log('LOGIN ERROR:', JSON.stringify(error.response?.data));
+  	console.log('LOGIN ERROR MSG:', error.message);
+  	console.log('LOGIN STATUS:', error.response?.status);
       Alert.alert('Failed', message);
     } finally {
       setLoading(false);
