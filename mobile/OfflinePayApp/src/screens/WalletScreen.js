@@ -110,43 +110,95 @@ export default function WalletScreen({ username, onLogout }) {
     }
 
     if (amount > 10000) {
-      Alert.alert('Too Much', 'Maximum load is ₹10,000');
+      Alert.alert('Too Much', 'Maximum ₹10,000');
       return;
     }
 
     setLoadingMoney(true);
+
     try {
-      // Get device ID — unique for this phone
       let deviceId = await AsyncStorage.getItem('device_id');
       if (!deviceId) {
         deviceId = 'device_' + Date.now().toString();
         await AsyncStorage.setItem('device_id', deviceId);
       }
 
-      const res = await api.post('/wallet/load-from-bank/', {
-        amount,
-        device_id: deviceId,
+      // Step 1 — Create Razorpay order
+      const orderRes = await api.post('/payment/create-order/', {
+        amount: amount,
       });
-      const result = res.data;
-      // Save everything locally
-      await saveBalance(parseFloat(result.new_balance));
-      await saveCertificate(result.certificate);
-      await savePublicKey(result.public_key);
 
-      setBalance(parseFloat(result.new_balance));
+      const { order_id, key_id, mock } = orderRes.data;
+
+      if (mock) {
+        // Mock mode — skip Razorpay checkout
+        const verifyRes = await api.post('/payment/verify/', {
+          razorpay_payment_id: 'mock_pay_' + Date.now(),
+          razorpay_order_id: order_id,
+          razorpay_signature: 'mock_signature',
+          amount: amount * 100,
+          device_id: deviceId,
+          mock: true,
+        });
+
+        await saveBalance(parseFloat(verifyRes.data.new_balance));
+        await saveCertificate(verifyRes.data.certificate);
+        await savePublicKey(verifyRes.data.public_key);
+        setBalance(parseFloat(verifyRes.data.new_balance));
+        setShowLoadModal(false);
+        setLoadAmount('');
+        Alert.alert('✅ Success!', `₹${amount} loaded (mock mode)`);
+        return;
+      }
+
+      // Step 2 — Open Razorpay checkout
+      const RazorpayCheckout = require('react-native-razorpay').default;
+
+      const options = {
+        description: 'Load money to OfflinePay wallet',
+        currency: 'INR',
+        key: key_id,
+        amount: amount * 100, // paise
+        order_id: order_id,
+        name: 'OfflinePay',
+        prefill: {
+          name: username,
+        },
+        theme: { color: '#6366f1' },
+      };
+
+      const paymentData = await RazorpayCheckout.open(options);
+
+      // Step 3 — Verify payment on server
+      const verifyRes = await api.post('/payment/verify/', {
+        razorpay_payment_id: paymentData.razorpay_payment_id,
+        razorpay_order_id: paymentData.razorpay_order_id,
+        razorpay_signature: paymentData.razorpay_signature,
+        amount: amount * 100,
+        device_id: deviceId,
+        mock: false,
+      });
+
+      // Save locally
+      await saveBalance(parseFloat(verifyRes.data.new_balance));
+      await saveCertificate(verifyRes.data.certificate);
+      await savePublicKey(verifyRes.data.public_key);
+
+      setBalance(parseFloat(verifyRes.data.new_balance));
       setShowLoadModal(false);
       setLoadAmount('');
 
-      Alert.alert('✅ Success!', `₹${amount} loaded to your wallet`);
+      Alert.alert('✅ Payment Successful!', `₹${amount} loaded to wallet`);
+
     } catch (error) {
-      console.log('FULL ERROR:', JSON.stringify(error.response?.data));
-      console.log('ERROR MSG:', error.message);
-      Alert.alert(
-        'Failed',
-        error.response?.data?.error ||
-        error.message ||
-        'Could not load money. Check internet.'
-      );
+      if (error.code === 'PAYMENT_CANCELLED') {
+        Alert.alert('Cancelled', 'Payment was cancelled');
+      } else {
+        Alert.alert(
+          'Failed',
+          error.response?.data?.error || error.message || 'Payment failed'
+        );
+      }
     } finally {
       setLoadingMoney(false);
     }
@@ -196,60 +248,60 @@ export default function WalletScreen({ username, onLogout }) {
   };
 
   const handleCashout = () => {
-  if (balance <= 0) {
-    Alert.alert('No Balance', 'Nothing to cash out.');
-    return;
-  }
+    if (balance <= 0) {
+      Alert.alert('No Balance', 'Nothing to cash out.');
+      return;
+    }
 
-  Alert.alert(
-    '🏦 Cash Out',
-    `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will:\n1. Sync all transactions\n2. Reset your wallet to ₹0`,
-    [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Cash Out',
-        onPress: async () => {
-          try {
-            // Step 1 — Sync transactions first
-            const pendingTxns = transactions.filter(
-              t => t.status === 'pending'
-            );
+    Alert.alert(
+      '🏦 Cash Out',
+      `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will:\n1. Sync all transactions\n2. Reset your wallet to ₹0`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Cash Out',
+          onPress: async () => {
+            try {
+              // Step 1 — Sync transactions first
+              const pendingTxns = transactions.filter(
+                t => t.status === 'pending'
+              );
 
-            if (pendingTxns.length > 0) {
-              const syncResult = await syncTransactions(pendingTxns);
-              console.log('Sync result:', syncResult);
-              await clearTransactions();
+              if (pendingTxns.length > 0) {
+                const syncResult = await syncTransactions(pendingTxns);
+                console.log('Sync result:', syncResult);
+                await clearTransactions();
+              }
+
+              // Step 2 — Cashout to bank
+              const res = await api.post('/wallet/cashout-to-bank/', {
+                local_balance: balance,
+              });
+
+              // Step 3 — Reset local wallet
+              await saveBalance(0);
+              await clearWalletData();
+              setBalance(0);
+              setTransactions([]);
+
+              Alert.alert(
+                '✅ Cashed Out!',
+                `₹${balance.toFixed(2)} sent to bank.\n` +
+                `Bank balance: ₹${res.data.bank_balance}\n` +
+                `Wallet reset to ₹0.`
+              );
+
+            } catch (error) {
+              Alert.alert(
+                'Failed',
+                error.response?.data?.error || 'Cashout failed. Check internet.'
+              );
             }
-
-            // Step 2 — Cashout to bank
-            const res = await api.post('/wallet/cashout-to-bank/', {
-              local_balance: balance,
-            });
-
-            // Step 3 — Reset local wallet
-            await saveBalance(0);
-            await clearWalletData();
-            setBalance(0);
-            setTransactions([]);
-
-            Alert.alert(
-              '✅ Cashed Out!',
-              `₹${balance.toFixed(2)} sent to bank.\n` +
-              `Bank balance: ₹${res.data.bank_balance}\n` +
-              `Wallet reset to ₹0.`
-            );
-
-          } catch (error) {
-            Alert.alert(
-              'Failed',
-              error.response?.data?.error || 'Cashout failed. Check internet.'
-            );
-          }
+          },
         },
-      },
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const pendingCount = transactions.filter(
     t => t.status === 'pending'

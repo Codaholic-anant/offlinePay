@@ -48,4 +48,8 @@ urlpatterns = [
     path('bank/', views.get_bank_account, name='bank'),
     path('wallet/load-from-bank/', views.load_money_from_bank, name='load_from_bank'),
     path('wallet/cashout-to-bank/', views.cashout_to_bank, name='cashout_to_bank'),
+    path('payment/create-order/', views.create_payment_order, name='create_order'),
+    path('payment/verify/', views.verify_payment, name='verify_payment'),
+    path('payment/cashout/', views.razorpay_cashout, name='razorpay_cashout'),
+
 ]
