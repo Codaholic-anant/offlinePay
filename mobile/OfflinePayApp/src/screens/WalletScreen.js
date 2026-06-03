@@ -294,7 +294,7 @@ export default function WalletScreen({ username, onLogout }) {
             } catch (error) {
               Alert.alert(
                 'Failed',
-                error.response?.data?.error || 'Cashout failed. Check internet.'
+                error.response?.data?.error || error.message || JSON.stringify(error.response?.data) || 'Cashout failed. Check internet.'
               );
             }
           },
