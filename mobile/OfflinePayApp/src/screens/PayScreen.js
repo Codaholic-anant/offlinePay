@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { buildPaymentPackage, deductBalance } from '../utils/payment';
 
 // Update this if ngrok restarts
-const BASE_URL = 'https://outreach-doorstep-splatter.ngrok-free.dev/api';
+const BASE_URL = 'https://offlinepay-6k39.onrender.com';
 
 export default function PayScreen({ onBack, onPaymentSent }) {
   const [receiverUsername, setReceiverUsername] = useState('');
