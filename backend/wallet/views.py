@@ -5,6 +5,9 @@ from rest_framework import status
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
+# Create bank account with ₹10,000 demo balance
+from .models import BankAccount
+# BankAccount.objects.create(user=user)
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.backends import default_backend
@@ -41,22 +44,14 @@ PUBLIC_KEY_PEM = public_key.public_bytes(
 
 
 def sign_data(data: dict) -> str:
-    """
-    Takes a dictionary like:
-    { 'username': 'ram', 'balance': 500 }
-
-    Converts to JSON string, then signs it.
-    Returns a long string of random-looking characters.
-    That string is the signature — proof server made this.
-    """
     message = json.dumps(data, sort_keys=True).encode('utf-8')
+    print(f"DJANGO SIGNING EXACT: {message}")
     signature = private_key.sign(
         message,
         padding.PKCS1v15(),
         hashes.SHA256()
     )
     return base64.b64encode(signature).decode('utf-8')
-
 
 # ─────────────────────────────────────────────────────
 # REGISTER
@@ -99,6 +94,7 @@ def register(request):
     # Create their wallet automatically
     # Every user gets a wallet with ₹0
     Wallet.objects.create(user=user)
+    BankAccount.objects.create(user=user)
 
     return Response(
         {'message': f'Account created for {username}'},
@@ -341,6 +337,14 @@ def sync_transactions(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def cashout(request):
+    """
+    User wants money back in bank account.
+    They tell us their current local balance.
+    We verify it makes sense, then reset wallet.
+
+    In real app → trigger actual bank transfer here.
+    For learning → we just reset the balance.
+    """
     local_balance = request.data.get('local_balance', 0)
 
     try:
@@ -353,19 +357,18 @@ def cashout(request):
 
     wallet = request.user.wallet
 
-    # Remove the strict check
-    # User might have received payments via Bluetooth
-    # that pushed balance above issued amount
-    # That's totally valid!
-    if local_balance < 0:
+    # Safety check
+    # They cannot cash out MORE than what was issued
+    # If they try → something fishy is happening
+    if local_balance > float(wallet.issued_balance):
         return Response(
-            {'error': 'Balance cannot be negative'},
+            {'error': 'Cannot cash out more than issued balance'},
             status=status.HTTP_400_BAD_REQUEST
         )
 
     cashed_out = local_balance
 
-    # Reset wallet
+    # Reset wallet completely
     wallet.issued_balance = 0
     wallet.is_offline = False
     wallet.device_id = ''
@@ -373,6 +376,7 @@ def cashout(request):
     wallet.save()
 
     # Deactivate all certificates
+    # Old pytihcertificates are now worthless
     wallet.certificates.update(is_active=False)
 
     return Response({
@@ -538,4 +542,227 @@ def check_confirmation_relay(request):
     return Response({
         'confirmed': True,
         'receiver': confirmation['receiver'],
+    })
+
+    # ─────────────────────────────────────────────
+# GET BANK ACCOUNT
+# GET /api/bank/
+# ─────────────────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_bank_account(request):
+    try:
+        account = request.user.bank_account
+    except:
+        from .models import BankAccount
+        account = BankAccount.objects.create(user=request.user)
+
+    transactions = account.transactions.order_by('-created_at')[:10]
+
+    return Response({
+        'account_number': account.account_number,
+        'bank_name': account.bank_name,
+        'balance': str(account.balance),
+        'transactions': [
+            {
+                'type': t.transaction_type,
+                'amount': str(t.amount),
+                'description': t.description,
+                'balance_after': str(t.balance_after),
+                'date': t.created_at.isoformat(),
+            }
+            for t in transactions
+        ]
+    })
+
+
+# ─────────────────────────────────────────────
+# LOAD MONEY (with bank debit)
+# Updated version with real bank deduction
+# ─────────────────────────────────────────────
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def load_money_from_bank(request):
+    """
+    Deducts from bank account and loads to wallet.
+    In production — replaced by Razorpay payment.
+    """
+    from decimal import Decimal
+    from .models import BankAccount, BankTransaction
+
+    amount = request.data.get('amount')
+    device_id = request.data.get('device_id', '')
+
+    if not amount:
+        return Response(
+            {'error': 'Amount required'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        amount = Decimal(str(amount))
+    except:
+        return Response(
+            {'error': 'Invalid amount'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if amount <= 0:
+        return Response(
+            {'error': 'Amount must be positive'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if amount > 10000:
+        return Response(
+            {'error': 'Maximum ₹10,000 per load'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Get bank account
+    try:
+        bank_account = request.user.bank_account
+    except:
+        bank_account = BankAccount.objects.create(user=request.user)
+
+    # Check bank balance
+    if bank_account.balance < amount:
+        return Response(
+            {
+                'error': f'Insufficient bank balance. '
+                         f'Available: ₹{bank_account.balance}'
+            },
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    wallet = request.user.wallet
+
+    # Check device lock
+    if wallet.is_offline and wallet.device_id != device_id:
+        return Response(
+            {'error': 'Wallet active on another device'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    # Deduct from bank
+    bank_account.balance -= amount
+    bank_account.save()
+
+    # Record bank transaction
+    BankTransaction.objects.create(
+        account=bank_account,
+        amount=amount,
+        transaction_type='debit',
+        description=f'Loaded to OfflinePay wallet',
+        balance_after=bank_account.balance,
+    )
+
+    # Add to wallet
+    wallet.issued_balance += amount
+    wallet.is_offline = True
+    wallet.device_id = device_id
+    wallet.went_offline_at = timezone.now()
+    wallet.save()
+
+    # Create signed certificate
+    now = timezone.now()
+    expires = now + timedelta(days=7)
+
+    cert_data = {
+        'balance': float(wallet.issued_balance),
+        'expires_at': expires.isoformat(),
+        'issued_at': now.isoformat(),
+        'user_id': request.user.id,
+        'username': request.user.username,
+    }
+
+    cert_data_string = json.dumps(cert_data, sort_keys=True)
+    signature = sign_data(cert_data)
+
+    WalletCertificate.objects.create(
+        wallet=wallet,
+        certified_balance=wallet.issued_balance,
+        signature=signature,
+        expires_at=expires,
+    )
+
+    return Response({
+        'message': f'₹{amount} loaded from bank to wallet',
+        'wallet_balance': str(wallet.issued_balance),
+        'bank_balance': str(bank_account.balance),
+        'new_balance': str(wallet.issued_balance),
+        'certificate': {
+            'data': cert_data,
+            'data_string': cert_data_string,
+            'signature': signature,
+            'expires_at': expires.isoformat(),
+        },
+        'public_key': PUBLIC_KEY_PEM,
+    })
+
+
+# ─────────────────────────────────────────────
+# CASHOUT (with bank credit)
+# ─────────────────────────────────────────────
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def cashout_to_bank(request):
+    """
+    Credits wallet balance back to bank account.
+    In production — replaced by Razorpay payout.
+    """
+    from decimal import Decimal
+    from .models import BankAccount, BankTransaction
+
+    local_balance = request.data.get('local_balance', 0)
+
+    try:
+        local_balance = Decimal(str(local_balance))
+    except:
+        return Response(
+            {'error': 'Invalid balance'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if local_balance < 0:
+        return Response(
+            {'error': 'Balance cannot be negative'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    wallet = request.user.wallet
+
+    # Get bank account
+    try:
+        bank_account = request.user.bank_account
+    except:
+        bank_account = BankAccount.objects.create(user=request.user)
+
+    # Credit to bank
+    bank_account.balance += local_balance
+    bank_account.save()
+
+    # Record bank transaction
+    BankTransaction.objects.create(
+        account=bank_account,
+        amount=local_balance,
+        transaction_type='credit',
+        description='Cashed out from OfflinePay wallet',
+        balance_after=bank_account.balance,
+    )
+
+    # Reset wallet
+    wallet.issued_balance = 0
+    wallet.is_offline = False
+    wallet.device_id = ''
+    wallet.went_offline_at = None
+    wallet.save()
+
+    wallet.certificates.update(is_active=False)
+
+    return Response({
+        'message': f'₹{local_balance} cashed out to bank',
+        'wallet_balance': '0.00',
+        'bank_balance': str(bank_account.balance),
+        'new_balance': '0.00',
     })

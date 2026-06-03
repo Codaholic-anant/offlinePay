@@ -45,4 +45,7 @@ urlpatterns = [
     path('wallet/check-relay/', views.check_payment_relay, name='check_relay'),
     path('wallet/confirm-relay/', views.confirm_payment_relay, name='confirm_relay'),
     path('wallet/check-confirm/', views.check_confirmation_relay, name='check_confirm'),
+    path('bank/', views.get_bank_account, name='bank'),
+    path('wallet/load-from-bank/', views.load_money_from_bank, name='load_from_bank'),
+    path('wallet/cashout-to-bank/', views.cashout_to_bank, name='cashout_to_bank'),
 ]

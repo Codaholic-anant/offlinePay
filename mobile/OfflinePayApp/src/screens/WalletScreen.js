@@ -3,13 +3,14 @@ import PayScreen from './PayScreen';
 import ReceiveScreen from './ReceiveScreen';
 import BluetoothPayScreen from './BluetoothPayScreen';
 import BluetoothReceiveScreen from './BluetoothReceiveScreen';
-// import { AppState } from 'react-native';
-import { cashout } from '../api';
+import BankScreen from './BankScreen';
+import api from '../api';
+import styles from '../styles/WalletStyles';
+
 import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   ScrollView,
   RefreshControl,
@@ -19,7 +20,7 @@ import {
   AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getWallet, loadMoney, logoutUser, syncTransactions } from '../api';
+import { getWallet, logoutUser, syncTransactions } from '../api';
 import {
   saveBalance,
   getBalance,
@@ -44,7 +45,7 @@ export default function WalletScreen({ username, onLogout }) {
   const [syncing, setSyncing] = useState(false);
   const [showPay, setShowPay] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
-
+  const [showBank, setShowBank] = useState(false);
   useEffect(() => {
     loadWalletData();
 
@@ -122,8 +123,11 @@ export default function WalletScreen({ username, onLogout }) {
         await AsyncStorage.setItem('device_id', deviceId);
       }
 
-      const result = await loadMoney(amount, deviceId);
-
+      const res = await api.post('/wallet/load-from-bank/', {
+        amount,
+        device_id: deviceId,
+      });
+      const result = res.data;
       // Save everything locally
       await saveBalance(parseFloat(result.new_balance));
       await saveCertificate(result.certificate);
@@ -192,54 +196,60 @@ export default function WalletScreen({ username, onLogout }) {
   };
 
   const handleCashout = () => {
-    if (balance <= 0) {
-      Alert.alert('No Balance', 'Nothing to cash out.');
-      return;
-    }
+  if (balance <= 0) {
+    Alert.alert('No Balance', 'Nothing to cash out.');
+    return;
+  }
 
-    Alert.alert(
-      '🏦 Cash Out',
-      `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will:\n1. Sync all transactions\n2. Reset your wallet to ₹0`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Cash Out',
-          onPress: async () => {
-            try {
-              // Step 1 — Sync transactions first
-              const pendingTxns = transactions.filter(
-                t => t.status === 'pending'
-              );
+  Alert.alert(
+    '🏦 Cash Out',
+    `Send ₹${balance.toFixed(2)} to your bank?\n\nThis will:\n1. Sync all transactions\n2. Reset your wallet to ₹0`,
+    [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Cash Out',
+        onPress: async () => {
+          try {
+            // Step 1 — Sync transactions first
+            const pendingTxns = transactions.filter(
+              t => t.status === 'pending'
+            );
 
-              if (pendingTxns.length > 0) {
-                console.log('Syncing', pendingTxns.length, 'transactions before cashout');
-                const syncResult = await syncTransactions(pendingTxns);
-                console.log('Sync result:', syncResult);
-                await clearTransactions();
-              }
-
-              // Step 2 — Then cashout
-              const result = await cashout(balance);
-              await saveBalance(0);
-              await clearWalletData();
-              setBalance(0);
-              setTransactions([]);
-
-              Alert.alert(
-                '✅ Cashed Out!',
-                `₹${balance.toFixed(2)} sent to your bank.\nWallet reset to ₹0.\nAll transactions synced.`
-              );
-            } catch (error) {
-              Alert.alert(
-                'Failed',
-                error.response?.data?.error || 'Cashout failed. Check internet.'
-              );
+            if (pendingTxns.length > 0) {
+              const syncResult = await syncTransactions(pendingTxns);
+              console.log('Sync result:', syncResult);
+              await clearTransactions();
             }
-          },
+
+            // Step 2 — Cashout to bank
+            const res = await api.post('/wallet/cashout-to-bank/', {
+              local_balance: balance,
+            });
+
+            // Step 3 — Reset local wallet
+            await saveBalance(0);
+            await clearWalletData();
+            setBalance(0);
+            setTransactions([]);
+
+            Alert.alert(
+              '✅ Cashed Out!',
+              `₹${balance.toFixed(2)} sent to bank.\n` +
+              `Bank balance: ₹${res.data.bank_balance}\n` +
+              `Wallet reset to ₹0.`
+            );
+
+          } catch (error) {
+            Alert.alert(
+              'Failed',
+              error.response?.data?.error || 'Cashout failed. Check internet.'
+            );
+          }
         },
-      ]
-    );
-  };
+      },
+    ]
+  );
+};
 
   const pendingCount = transactions.filter(
     t => t.status === 'pending'
@@ -273,6 +283,17 @@ export default function WalletScreen({ username, onLogout }) {
         onPaymentReceived={(newBalance) => {
           setBalance(newBalance);
           setShowReceive(false);
+        }}
+      />
+    );
+  }
+
+  if (showBank) {
+    return (
+      <BankScreen
+        onBack={() => {
+          setShowBank(false);
+          loadWalletData();
         }}
       />
     );
@@ -357,6 +378,17 @@ export default function WalletScreen({ username, onLogout }) {
             💾 Stored on this phone
           </Text>
         </View>
+
+        {/* Bank Account button */}
+        <TouchableOpacity
+          style={styles.bankBtn}
+          onPress={() => setShowBank(true)}
+          disabled={!isOnline}
+        >
+          <Text style={styles.bankBtnText}>
+            🏦  View Bank Account
+          </Text>
+        </TouchableOpacity>
 
         {/* Pending sync warning */}
         {pendingCount > 0 && (
@@ -570,319 +602,3 @@ export default function WalletScreen({ username, onLogout }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f23',
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#0f0f23',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-  },
-  loadingText: {
-    color: '#888',
-    fontSize: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 16,
-  },
-  greeting: {
-    color: '#888',
-    fontSize: 14,
-  },
-  username: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: 'bold',
-  },
-  logoutBtn: {
-    backgroundColor: '#1a1a3e',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ef4444',
-  },
-  logoutText: {
-    color: '#ef4444',
-    fontSize: 13,
-  },
-  statusPill: {
-    marginHorizontal: 24,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-  },
-  btReceiveCard: {
-    backgroundColor: '#1e1b4b',
-    marginHorizontal: 24,
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#6366f1',
-    marginBottom: 12,
-  },
-  btReceiveText: {
-    color: '#818cf8',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  statusText: {
-    color: 'white',
-    textAlign: 'center',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  balanceCard: {
-    backgroundColor: '#6366f1',
-    marginHorizontal: 24,
-    borderRadius: 24,
-    padding: 36,
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  balanceLabel: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  balanceAmount: {
-    color: 'white',
-    fontSize: 52,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  balanceNote: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
-  },
-  syncWarning: {
-    backgroundColor: '#92400e',
-    marginHorizontal: 24,
-    borderRadius: 12,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  syncWarningText: {
-    color: 'white',
-    fontWeight: '600',
-    fontSize: 13,
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    marginHorizontal: 24,
-    gap: 12,
-    marginBottom: 12,
-  },
-  actionCard: {
-    flex: 1,
-    backgroundColor: '#1a1a3e',
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-  },
-  actionCardDisabled: {
-    opacity: 0.5,
-  },
-  actionCardGreen: {
-    backgroundColor: '#14532d',
-    borderColor: '#166534',
-  },
-  actionIcon: {
-    fontSize: 32,
-    marginBottom: 8,
-  },
-  actionTitle: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 15,
-    marginBottom: 4,
-  },
-  actionSub: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-  },
-  receiveCard: {
-    backgroundColor: '#1a1a3e',
-    marginHorizontal: 24,
-    borderRadius: 16,
-    padding: 18,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-    marginBottom: 12,
-  },
-  receiveText: {
-    color: 'white',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  syncBtn: {
-    marginHorizontal: 24,
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#6366f1',
-    marginBottom: 24,
-  },
-  syncBtnText: {
-    color: '#6366f1',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  historySection: {
-    marginHorizontal: 24,
-    marginBottom: 40,
-  },
-  historyTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-  },
-  emptyBox: {
-    backgroundColor: '#1a1a3e',
-    borderRadius: 20,
-    padding: 40,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  emptyText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  emptySub: {
-    color: '#888',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  txnRow: {
-    backgroundColor: '#1a1a3e',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-  },
-  txnLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    flex: 1,
-  },
-  txnIcon: {
-    fontSize: 28,
-  },
-  txnName: {
-    color: 'white',
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  txnDate: {
-    color: '#666',
-    fontSize: 11,
-    marginBottom: 2,
-  },
-  txnStatus: {
-    color: '#888',
-    fontSize: 11,
-  },
-  txnAmount: {
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
-  },
-  modalCard: {
-    backgroundColor: '#1a1a3e',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 32,
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-  },
-  modalTitle: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 6,
-  },
-  modalSub: {
-    color: '#888',
-    fontSize: 13,
-    marginBottom: 24,
-  },
-  modalInput: {
-    backgroundColor: '#0f0f23',
-    borderRadius: 14,
-    padding: 18,
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-    borderWidth: 1,
-    borderColor: '#2a2a5e',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  modalButton: {
-    backgroundColor: '#6366f1',
-    borderRadius: 14,
-    padding: 18,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  modalCancel: {
-    padding: 16,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    color: '#888',
-    fontSize: 15,
-  },
-  cashoutBtn: {
-    marginHorizontal: 24,
-    borderRadius: 16,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ef4444',
-    marginBottom: 24,
-  },
-  cashoutBtnText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

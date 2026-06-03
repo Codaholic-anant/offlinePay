@@ -153,3 +153,75 @@ class WalletCertificate(models.Model):
             f"Certificate: {self.wallet.user.username} "
             f"₹{self.certified_balance}"
         )
+    
+    
+# Create bank account with ₹10,000 demo balance
+class BankAccount(models.Model):
+    """
+    Simulated bank account.
+    In production — replaced by Razorpay.
+    Shows complete money flow for demo.
+    """
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='bank_account'
+    )
+
+    # Simulated bank balance
+    balance = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=10000.00  # Everyone starts with ₹10,000
+    )
+
+    account_number = models.CharField(
+        max_length=20,
+        unique=True,
+        blank=True
+    )
+
+    bank_name = models.CharField(
+        max_length=100,
+        default='OfflinePay Demo Bank'
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if not self.account_number:
+            import random
+            self.account_number = ''.join(
+                [str(random.randint(0, 9)) for _ in range(16)]
+            )
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.username} — ₹{self.balance}"
+
+
+class BankTransaction(models.Model):
+    """
+    Records every bank transaction.
+    Load money = debit from bank.
+    Cash out = credit to bank.
+    """
+    TYPE_CHOICES = [
+        ('debit', 'Debit'),   # money left bank → wallet
+        ('credit', 'Credit'), # money came back → bank
+    ]
+
+    account = models.ForeignKey(
+        BankAccount,
+        on_delete=models.CASCADE,
+        related_name='transactions'
+    )
+
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    description = models.CharField(max_length=255)
+    balance_after = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.transaction_type} ₹{self.amount} — {self.description}"

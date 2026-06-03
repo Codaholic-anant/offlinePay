@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import styles from '../styles/PinStlyes';
 import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet,
   Alert,
   Vibration,
 } from 'react-native';

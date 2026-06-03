@@ -1,3 +1,5 @@
+import os
+import dj_database_url
 from pathlib import Path
 from datetime import timedelta
 
@@ -9,11 +11,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Secret key — Django uses this to encrypt things
 # In real production app, keep this secret and long
-SECRET_KEY = 'offlinepay-dev-secret-key-change-later'
-
+SECRET_KEY = os.environ.get(
+    'SECRET_KEY',
+    'dev-key-change-in-production-xyz123'
+)
 # True means show detailed errors — only for learning
 # In real app set this to False
-DEBUG = True
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+
 
 # '*' means accept requests from any IP address
 # This lets our phone connect to Django over WiFi
@@ -39,6 +44,7 @@ MIDDLEWARE = [
     # corsheaders MUST be first in this list
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -71,12 +77,23 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # SQLite = a simple file based database
 # Perfect for learning — no setup needed
 # db.sqlite3 file gets created automatically
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+
+if DATABASE_URL:
+    DATABASES = {
+        'default': dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+        )
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Tell Django REST Framework to use JWT for login
 REST_FRAMEWORK = {
@@ -107,3 +124,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = 'static/'
+
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
