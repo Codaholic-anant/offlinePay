@@ -152,7 +152,7 @@ export default function WalletScreen({ username, onLogout }) {
           razorpay_signature: 'mock_signature',
           amount: amount * 100,
           device_id: deviceId,
-          mock: true,
+          mock: false,
         });
 
         await saveBalance(parseFloat(verifyRes.data.new_balance));
