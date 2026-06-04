@@ -35,8 +35,7 @@ INSTALLED_APPS = [
     # Packages we installed via pip
     'rest_framework',        # helps build APIs easily
     'rest_framework_simplejwt',  # handles login tokens
-    'corsheaders',  
-    'django_extensions',         # lets phone app talk to backend
+    'corsheaders',         # lets phone app talk to backend
     # Our own app
     'wallet',
 ]
