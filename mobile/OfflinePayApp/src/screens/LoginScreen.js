@@ -48,10 +48,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         onLoginSuccess(username.trim());
       }
     } catch (error) {
-      const message =
-  	console.log('LOGIN ERROR:', JSON.stringify(error.response?.data));
-  	console.log('LOGIN ERROR MSG:', error.message);
-  	console.log('LOGIN STATUS:', error.response?.status);
+      const message = error.response?.data?.error || error.message || 'Something went wrong';
       Alert.alert('Failed', message);
     } finally {
       setLoading(false);

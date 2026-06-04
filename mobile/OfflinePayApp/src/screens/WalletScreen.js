@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import PayScreen from './PayScreen';
-import ReceiveScreen from './ReceiveScreen';
+// import ReceiveScreen from './ReceiveScreen';
 import BluetoothPayScreen from './BluetoothPayScreen';
 import BluetoothReceiveScreen from './BluetoothReceiveScreen';
 import BankScreen from './BankScreen';
 import api from '../api';
 import styles from '../styles/WalletStyles';
-
+import SettingsScreen from './SettingsScreen';
+import QRReceiveScreen from './QRReceiveScreen';
+import QRScanScreen from './QRScanScreen';
 import {
   View,
   Text,
@@ -44,8 +46,11 @@ export default function WalletScreen({ username, onLogout }) {
   const [loadingMoney, setLoadingMoney] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [showPay, setShowPay] = useState(false);
-  const [showReceive, setShowReceive] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  // const [showReceive, setShowReceive] = useState(false);
   const [showBank, setShowBank] = useState(false);
+  const [showQRReceive, setShowQRReceive] = useState(false);
+  const [showQRPay, setShowQRPay] = useState(false);
   useEffect(() => {
     loadWalletData();
 
@@ -138,8 +143,8 @@ export default function WalletScreen({ username, onLogout }) {
       });
 
       const { order_id, key_id, mock } = orderRes.data;
-      const forceMock = true; // remove this for production
-      if (mock || forceMock) {
+      // const forceMock = true; // remove this for production
+      if (mock) {
         // Mock mode — skip Razorpay checkout
         const verifyRes = await api.post('/payment/verify/', {
           razorpay_payment_id: 'mock_pay_' + Date.now(),
@@ -337,17 +342,30 @@ export default function WalletScreen({ username, onLogout }) {
     );
   }
 
-  if (showReceive) {
+  if (showQRReceive) {
     return (
-      <ReceiveScreen
-        onBack={() => setShowReceive(false)}
+      <QRReceiveScreen
+        onBack={() => setShowQRReceive(false)}
         onPaymentReceived={(newBalance) => {
           setBalance(newBalance);
-          setShowReceive(false);
+          setShowQRReceive(false);
         }}
       />
     );
   }
+
+  if (showQRPay) {
+    return (
+      <QRScanScreen
+        onBack={() => setShowQRPay(false)}
+        onPaymentSent={(newBalance) => {
+          setBalance(newBalance);
+          setShowQRPay(false);
+        }}
+      />
+    );
+  }
+
 
   if (showBank) {
     return (
@@ -387,6 +405,15 @@ export default function WalletScreen({ username, onLogout }) {
     );
   }
 
+  if (showSettings) {
+    return (
+      <SettingsScreen
+        username={username}
+        onLogout={onLogout}
+        onBack={() => setShowSettings(false)}
+      />
+    );
+  }
 
   return (
 
@@ -410,10 +437,10 @@ export default function WalletScreen({ username, onLogout }) {
             <Text style={styles.username}>{username}</Text>
           </View>
           <TouchableOpacity
-            onPress={handleLogout}
+            onPress={() => setShowSettings(true)}
             style={styles.logoutBtn}
           >
-            <Text style={styles.logoutText}>Logout</Text>
+            <Text style={styles.logoutText}>⚙️ Settings</Text>
           </TouchableOpacity>
         </View>
 
@@ -468,6 +495,27 @@ export default function WalletScreen({ username, onLogout }) {
           </TouchableOpacity>
         )}
 
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.actionCard]}
+            onPress={() => setShowQRPay(true)}
+            disabled={!isOnline}
+          >
+            <Text style={styles.actionIcon}>📷</Text>
+            <Text style={styles.actionTitle}>Scan QR</Text>
+            <Text style={styles.actionSub}>Pay online</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionCard, { borderColor: '#6366f1' }]}
+            onPress={() => setShowQRReceive(true)}
+          >
+            <Text style={styles.actionIcon}>📲</Text>
+            <Text style={styles.actionTitle}>My QR</Text>
+            <Text style={styles.actionSub}>Receive money</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Action buttons */}
         <View style={styles.actionsRow}>
           {/* Load Money */}
@@ -502,16 +550,6 @@ export default function WalletScreen({ username, onLogout }) {
             <Text style={styles.actionSub}>Works offline</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Receive button */}
-        <TouchableOpacity
-          style={styles.receiveCard}
-          onPress={() => setShowReceive(true)}
-        >
-          <Text style={styles.receiveText}>
-            📥  Receive Payment via Bluetooth
-          </Text>
-        </TouchableOpacity>
 
         {/* Bluetooth Receive button */}
         <TouchableOpacity
