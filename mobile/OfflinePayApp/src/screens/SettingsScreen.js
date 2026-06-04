@@ -178,7 +178,7 @@ export default function SettingsScreen({ username, onLogout, onBack }) {
                     />
                 </View>
 
-                <TouchableOpacity
+                {/* <TouchableOpacity
                     style={[s.settingRow, { backgroundColor: theme.bgCard, borderColor: theme.border }]}
                     onPress={toggleTheme}
                 >
@@ -188,7 +188,7 @@ export default function SettingsScreen({ username, onLogout, onBack }) {
                     <Text style={[s.settingValue, { color: theme.primary }]}>
                         {isDark ? 'ON' : 'OFF'}
                     </Text>
-                </TouchableOpacity>
+                </TouchableOpacity> */}
                 
                 {/* Logout Button */}
                 <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>

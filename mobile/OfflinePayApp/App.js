@@ -57,6 +57,15 @@ function AppContent() {
     return <PinScreen mode="verify" onSuccess={() => setAppState('wallet')} />;
   }
 
+  if (appState === 'wallet') {
+    return (
+      <AppNavigator
+        username={username}
+        onLogout={() => { setUsername(null); setAppState('login'); }}
+      />
+    );
+  }
+
   return (
     <AppNavigator
       username={username}

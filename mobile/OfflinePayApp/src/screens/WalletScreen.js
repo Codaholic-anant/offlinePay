@@ -283,7 +283,7 @@ export default function WalletScreen({ username, onLogout }) {
 
               if (pendingTxns.length > 0) {
                 const syncResult = await syncTransactions(pendingTxns);
-                console.log('Sync result:', syncResult);
+                // console.log('Sync result:', syncResult);
                 await clearTransactions();
               }
 
