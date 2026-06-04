@@ -66,34 +66,102 @@ export default function HomeScreen({ navigation, username, onLogout }) {
 
   const handleLoadMoney = async () => {
     const amount = parseFloat(loadAmount);
+
     if (!loadAmount || isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid', 'Enter a valid amount');
+      Alert.alert('Invalid', 'Please enter a valid amount');
       return;
     }
+
     if (amount > 10000) {
-      Alert.alert('Limit', 'Maximum ₹10,000 per load');
+      Alert.alert('Too Much', 'Maximum ₹10,000');
       return;
     }
+
     setLoadingMoney(true);
+
     try {
       let deviceId = await AsyncStorage.getItem('device_id');
       if (!deviceId) {
         deviceId = 'device_' + Date.now().toString();
         await AsyncStorage.setItem('device_id', deviceId);
       }
-      const res = await api.post('/wallet/load-from-bank/', {
-        amount, device_id: deviceId,
+
+      // Step 1 — Create Razorpay order
+      const orderRes = await api.post('/payment/create-order/', {
+        amount: amount,
       });
-      const result = res.data;
-      await saveBalance(parseFloat(result.new_balance));
-      await saveCertificate(result.certificate);
-      await savePublicKey(result.public_key);
-      setBalance(parseFloat(result.new_balance));
+
+      const { order_id, key_id, mock } = orderRes.data;
+      // const forceMock = true; // remove this for production
+      if (mock) {
+        // Mock mode — skip Razorpay checkout
+        const verifyRes = await api.post('/payment/verify/', {
+          razorpay_payment_id: 'mock_pay_' + Date.now(),
+          razorpay_order_id: order_id,
+          razorpay_signature: 'mock_signature',
+          amount: amount * 100,
+          device_id: deviceId,
+          mock: false,
+        });
+
+        await saveBalance(parseFloat(verifyRes.data.new_balance));
+        await saveCertificate(verifyRes.data.certificate);
+        await savePublicKey(verifyRes.data.public_key);
+        setBalance(parseFloat(verifyRes.data.new_balance));
+        setShowLoadModal(false);
+        setLoadAmount('');
+        Alert.alert('✅ Success!', `₹${amount} loaded (mock mode)`);
+        return;
+      }
+
+      // Step 2 — Open Razorpay checkout
+      const RazorpayCheckout = require('react-native-razorpay').default;
+
+      const options = {
+        description: 'Load money to OfflinePay wallet',
+        currency: 'INR',
+        key: key_id,
+        amount: amount * 100, // paise
+        order_id: order_id,
+        name: 'OfflinePay',
+        prefill: {
+          name: username,
+        },
+        theme: { color: '#6366f1' },
+      };
+
+      const paymentData = await RazorpayCheckout.open(options);
+
+      // Step 3 — Verify payment on server
+      const verifyRes = await api.post('/payment/verify/', {
+        razorpay_payment_id: paymentData.razorpay_payment_id,
+        razorpay_order_id: paymentData.razorpay_order_id,
+        razorpay_signature: paymentData.razorpay_signature,
+        amount: amount * 100,
+        device_id: deviceId,
+        mock: false,
+      });
+
+      // Save locally
+      await saveBalance(parseFloat(verifyRes.data.new_balance));
+      await saveCertificate(verifyRes.data.certificate);
+      await savePublicKey(verifyRes.data.public_key);
+
+      setBalance(parseFloat(verifyRes.data.new_balance));
       setShowLoadModal(false);
       setLoadAmount('');
-      Alert.alert('✅ Money Loaded!', `₹${amount} added to wallet`);
+
+      Alert.alert('✅ Payment Successful!', `₹${amount} loaded to wallet`);
+
     } catch (error) {
-      Alert.alert('Failed', error.response?.data?.error || 'Could not load money');
+      if (error.code === 'PAYMENT_CANCELLED') {
+        Alert.alert('Cancelled', 'Payment was cancelled');
+      } else {
+        Alert.alert(
+          'Failed',
+          error.response?.data?.error || error.message || 'Payment failed'
+        );
+      }
     } finally {
       setLoadingMoney(false);
     }
