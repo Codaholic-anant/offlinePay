@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, RefreshControl, ActivityIndicator,
@@ -37,6 +38,12 @@ export default function HomeScreen({ navigation, username, onLogout }) {
     });
     return () => { clearInterval(interval); sub.remove(); };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadWalletData();
+    }, [])
+  );
 
   const checkOnlineStatus = async () => {
     try {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -17,6 +18,12 @@ export default function BankScreen({ onBack }) {
   useEffect(() => {
     loadBankData();
   }, []);
+
+  useFocusEffect(
+  useCallback(() => {
+    loadWalletData();
+  }, [])
+);
 
   const loadBankData = async () => {
     try {
